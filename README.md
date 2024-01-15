@@ -26,7 +26,7 @@ We welcome contributions to this project! Whether it's in the form of feature en
 
 ## License
 
-This project is licensed under [LICENSE NAME] - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under [TheUnlicense] - see the [LICENSE.md](LICENSE.md) file for details.
 
 ---
 
