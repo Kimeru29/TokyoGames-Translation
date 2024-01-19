@@ -13,13 +13,13 @@
 
     <Grid>
         <Border BorderThickness="0,5,0,0" BorderBrush="#80FFFFFF">
-            <TextBlock Text="Hello World"
+            <!--<TextBlock Text="Hello World"
                        FontSize="40"
                        FontWeight="Bold"
                        Foreground="Black"
                        Background="Yellow"
                        HorizontalAlignment="Center"
-                       VerticalAlignment="Center"/>
+                       VerticalAlignment="Center"/>-->
         </Border>
     </Grid>
 </Window>
