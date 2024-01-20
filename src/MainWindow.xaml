@@ -5,21 +5,13 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:TokyoGames_Translation"
         mc:Ignorable="d"
-        Title="Transparent Window"
-        WindowStyle="None"
-        AllowsTransparency="True"
-        Background="Transparent"
+        Title="Transparent Window"        
+        WindowStyle="None" AllowsTransparency="True" Opacity="0.9"
+        Topmost="True" Background="White" MouseDown="OnMouseDown"
+        MouseUp="OnMouseUp" MouseMove="OnMouseMove"        
         WindowState="Maximized">
-
-    <Grid>
-        <Border BorderThickness="0,5,0,0" BorderBrush="#80FFFFFF">
-            <!--<TextBlock Text="Hello World"
-                       FontSize="40"
-                       FontWeight="Bold"
-                       Foreground="Black"
-                       Background="Yellow"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"/>-->
-        </Border>
-    </Grid>
+    <Canvas Name="MyCanvas">
+        <Rectangle x:Name="selectionRectangle" Stroke="Transparent" StrokeThickness="2"
+           Fill="#22FF0000" Opacity="0.1" Visibility="Collapsed"/>
+    </Canvas>
 </Window>
