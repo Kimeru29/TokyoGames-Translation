@@ -1,5 +1,4 @@
 ﻿using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -10,13 +9,10 @@ using System.Windows.Threading;
 using IronOcr;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Tesseract;
 using System.Windows.Input;
 using System.Windows.Controls;
-using static System.Net.Mime.MediaTypeNames;
 
 
 namespace TokyoGames_Translation;
@@ -72,35 +68,58 @@ public class NativeMethods
 
 public class OpenAIResponse
 {
-    [JsonProperty("choices")]
-    public List<Choice> Choices { get; set; }
-
-    public class Choice
-    {
-        [JsonProperty("text")]
-        public string Text { get; set; }
-    }
+    public string Id { get; set; }
+    public string Object { get; set; }
+    public long Created { get; set; }
+    public string Model { get; set; }
+    public Usage Usage { get; set; }
+    public Choice[] Choices { get; set; }
 }
+
+public class Usage
+{
+    public int PromptTokens { get; set; }
+    public int CompletionTokens { get; set; }
+    public int TotalTokens { get; set; }
+}
+
+public class Choice
+{
+    public Message Message { get; set; }
+}
+
+public class Message
+{
+    public string Role { get; set; }
+    public string Content { get; set; }
+}
+
 
 
 public partial class MainWindow : Window
 {
     static readonly HttpClient client = new HttpClient();
     private DispatcherTimer screenshotTimer;
-    private System.Windows.Point _startPoint; // WPF Point for capturing start position
-    private System.Windows.Rect _selectionRectangle; // Drawing Rectangle to define the capture area
-    private bool _isMouseDown; // Flag to track if the mouse button is pressed
-
-    private System.Windows.Rect _captureRect; // Store the coordinates for the screenshot area
-
+    private System.Windows.Point _startPoint;
+    private System.Windows.Rect _selectionRectangle;
+    private bool _isMouseDown;
+    private System.Windows.Rect _captureRect;
+    private string lastText = string.Empty;
+    private int translationCount = 0;
+    private bool canReplace = true;
+    private int actionButtonPressCount = 0;
+    private int actionButtonReleaseCount = 0;
+    private DispatcherTimer timer = new DispatcherTimer();
+    private bool screenshotTaken = false;
 
     public MainWindow()
     {
         InitializeComponent();
+        this.Loaded += new RoutedEventHandler(MainWindow_Loaded);
 
         this.Loaded += (sender, e) =>
         {
-            this.Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(1, 0, 0, 0)); // Nearly transparent
+            this.Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(1, 0, 0, 0));
         };
 
         this.Width = SystemParameters.PrimaryScreenWidth;
@@ -111,15 +130,35 @@ public partial class MainWindow : Window
         InitializeScreenshotTimer();
     }
 
+    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        var screenWidth = SystemParameters.PrimaryScreenWidth;
+        var screenHeight = SystemParameters.PrimaryScreenHeight;
+
+        this.Width = screenWidth / 2;   // Half the screen width
+        this.Height = screenHeight;     // Full screen height
+        this.Left = 0;                  // Align to the left
+        this.Top = 0;                   // Align to the top
+    }
+
+    private void Window_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.K)
+        {
+            actionButtonPressCount++;
+        }
+    }
+
+
     #region Events
     #region Screenshot events
     private void OnMouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (screenshotTaken) return;
+
         _startPoint = e.GetPosition(this);
         _isMouseDown = true;
-        MyCanvas.CaptureMouse(); // Use the named Canvas directly
-
-        // Initialize the selection rectangle here
+        MyCanvas.CaptureMouse();
         selectionRectangle.Visibility = Visibility.Visible;
         Canvas.SetLeft(selectionRectangle, _startPoint.X);
         Canvas.SetTop(selectionRectangle, _startPoint.Y);
@@ -130,6 +169,8 @@ public partial class MainWindow : Window
 
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
+        if (screenshotTaken) return;
+
         if (_isMouseDown)
         {
             var currentPoint = e.GetPosition(this);
@@ -138,47 +179,44 @@ public partial class MainWindow : Window
             var width = Math.Abs(_startPoint.X - currentPoint.X);
             var height = Math.Abs(_startPoint.Y - currentPoint.Y);
 
-            // Update the visual representation
             Canvas.SetLeft(selectionRectangle, x);
             Canvas.SetTop(selectionRectangle, y);
             selectionRectangle.Width = width;
             selectionRectangle.Height = height;
 
-            // Update the global variable for the screenshot
             _selectionRectangle = new System.Windows.Rect(
-                _selectionRectangle.Left,
-                _selectionRectangle.Top,
-                _selectionRectangle.Width,
-                _selectionRectangle.Height);
+    _selectionRectangle.Left,
+    _selectionRectangle.Top,
+    _selectionRectangle.Width,
+    _selectionRectangle.Height);
         }
     }
     private void OnMouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (screenshotTaken) return;
+
         if (_isMouseDown)
         {
             _isMouseDown = false;
 
-            // Convert the canvas-relative coordinates to screen coordinates
             System.Windows.Point screenTopLeft = this.PointToScreen(new System.Windows.Point(Canvas.GetLeft(selectionRectangle), Canvas.GetTop(selectionRectangle)));
 
-            // Create a Rect with the size of the selection and the screen-relative coordinates
             _captureRect = new System.Windows.Rect(
-                screenTopLeft.X,
-                screenTopLeft.Y,
-                selectionRectangle.Width,
-                selectionRectangle.Height);
+    screenTopLeft.X,
+    screenTopLeft.Y,
+    selectionRectangle.Width,
+    selectionRectangle.Height);
 
-            // Now call the capture method with the screen coordinates
             CaptureScreenArea("screenshot.png");
 
-            // Hide the selection rectangle
             selectionRectangle.Visibility = Visibility.Collapsed;
 
-            // Release the mouse capture
             if (sender is Canvas canvas)
             {
                 canvas.ReleaseMouseCapture();
             }
+
+            screenshotTaken = true;
         }
     }
     #endregion
@@ -206,17 +244,89 @@ public partial class MainWindow : Window
     private void InitializeScreenshotTimer()
     {
         screenshotTimer = new DispatcherTimer();
-        screenshotTimer.Interval = TimeSpan.FromSeconds(10);
+        screenshotTimer.Interval = TimeSpan.FromSeconds(15);
         screenshotTimer.Tick += ScreenshotTimer_Tick;
         screenshotTimer.Start();
     }
 
     private async void ScreenshotTimer_Tick(object sender, EventArgs e)
     {
+        if(actionButtonPressCount == actionButtonReleaseCount) 
+            return;
+
+        actionButtonReleaseCount++;
+
         var bitmapImage = CaptureScreenArea("");
         var text = await PerformOcrTess(@"C:\test\image.png", bitmapImage);
-        var translation = await TranslateJapaneseToEnglish(text);
+
+        int levenshteinDistance = ComputeLevenshteinDistance(text, lastText);
+        double similarity = 1.0 - (double)levenshteinDistance / Math.Max(text.Length, lastText.Length);
+
+        string filePath = @"C:\test\file.txt";
+
+        if (similarity <= 0.5 || translationCount == 0)
+        {
+            translationCount++;            
+            text += $"{text} {await TranslateJapaneseToEnglish(text)}\n\n";    
+
+            File.AppendAllText(filePath, text);
+            lastText = text;
+            canReplace = true;
+        }
+        else if (similarity > 0.5 && canReplace)
+        {
+            canReplace = false;
+            var lines = File.ReadAllLines(filePath).ToList();
+            if (lines.Count > 0)
+            {
+                lines[lines.Count - 1] = text;
+                File.WriteAllLines(filePath, lines);
+            }
+            else
+            {
+                File.AppendAllText(filePath, text + "\n");
+            }
+        }
     }
+
+    #endregion
+
+    #region Helper methods
+    public static int ComputeLevenshteinDistance(string source, string target)
+    {
+        if (string.IsNullOrEmpty(source))
+        {
+            return string.IsNullOrEmpty(target) ? 0 : target.Length;
+        }
+
+        if (string.IsNullOrEmpty(target))
+        {
+            return source.Length;
+        }
+
+        int sourceLength = source.Length;
+        int targetLength = target.Length;
+        var distance = new int[sourceLength + 1, targetLength + 1];
+
+        // Initialize the distance matrix
+        for (int i = 0; i <= sourceLength; distance[i, 0] = i++) { }
+        for (int j = 0; j <= targetLength; distance[0, j] = j++) { }
+
+        for (int i = 1; i <= sourceLength; i++)
+        {
+            for (int j = 1; j <= targetLength; j++)
+            {
+                int cost = (target[j - 1] == source[i - 1]) ? 0 : 1;
+                distance[i, j] = Math.Min(
+                    Math.Min(distance[i - 1, j] + 1, distance[i, j - 1] + 1),
+                    distance[i - 1, j - 1] + cost);
+            }
+        }
+
+        return distance[sourceLength, targetLength];
+    }
+
+
     #endregion
 
 
@@ -224,14 +334,10 @@ public partial class MainWindow : Window
     #region OCR/Translation methods
     public async Task<string> PerformOcrTess(string imagePath, Bitmap image)
     {
-        string tessdataPath = @"C:\tessdata"; // Set the path to the tessdata directory
-        string language = "jpn"; // Set the language to Japanese
-
-        // Convert Bitmap to byte array
+        string tessdataPath = @"C:\tessdata"; string language = "jpn";
         byte[] imageData = BitmapToByteArray(image);
         image.Dispose();
 
-        // Perform OCR using Tesseract
         using (var engine = new TesseractEngine(tessdataPath, language, EngineMode.LstmOnly))
         {
             using (var pix = Pix.LoadTiffFromMemory(imageData))
@@ -247,7 +353,7 @@ public partial class MainWindow : Window
     private byte[] BitmapToByteArray(Bitmap image)
     {
         using (var ms = new MemoryStream())
-        {            
+        {
             image.Save(ms, System.Drawing.Imaging.ImageFormat.Tiff);
             return ms.ToArray();
         }
@@ -256,36 +362,36 @@ public partial class MainWindow : Window
 
     public async Task<string> TranslateJapaneseToEnglish(string japaneseText)
     {
-        var apiKey = "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"; // Replace with your API key
-        var url = "https://api.openai.com/v1/engines/gpt-4/completions"; // URL for GPT-4 API
+        if (string.IsNullOrEmpty(japaneseText)) return "";
+        var apiKey = "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"; // Your API key
+        string prompt = $"You're a professional Japanese-to-English game translator. Translate and adapt for American audiences the following japanese text (this text can be minimal, don't worry about that no need to warm me), provide an accurate translation but also a translation that makes sense in english but retains the original idea DON'T explain your translation: \n'{japaneseText}'";
 
         var requestData = new
         {
-            prompt = "Translate this Japanese text to English: '" + japaneseText + "'",
-            temperature = 0.7,
-            max_tokens = 60
+            model = "gpt-4-1106-preview",
+            messages = new[] { new { role = "user", content = prompt } },
+            temperature = 0.7
         };
 
-        var json = JsonConvert.SerializeObject(requestData);
-        var data = new StringContent(json, Encoding.UTF8, "application/json");
+        string json = JsonConvert.SerializeObject(requestData);
+        StringContent content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        var response = await client.PostAsync(url, data);
-        string result = await response.Content.ReadAsStringAsync();
+        HttpResponseMessage response = await client.PostAsync("https://api.openai.com/v1/chat/completions", content);
+        response.EnsureSuccessStatusCode();
+        string responseBody = await response.Content.ReadAsStringAsync();
 
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new Exception("API request failed: " + result);
-        }
+        var openAIResponse = JsonConvert.DeserializeObject<OpenAIResponse>(responseBody);
 
-        dynamic jsonResponse = JsonConvert.DeserializeObject(result);
-        return jsonResponse.choices[0].text;
+        // Extracting only the content of the response
+        string messageContent = openAIResponse?.Choices[0]?.Message?.Content.Trim();
+        return messageContent;
     }
+
     #endregion
 
     #region legacy methods
-    //TODO: Fix japanese text recognition. Currently it is not working.
     private async Task<string> PerformOcr(Bitmap image)
     {
         IronOcr.License.LicenseKey = "xxxxx";
@@ -295,7 +401,6 @@ public partial class MainWindow : Window
 
         using (var ocrInput = new OcrInput())
         {
-            //ocrInput.AddImage(image);
             ocrInput.AddImage(@"C:\test\image.png");
 
             ocr.Language = OcrLanguage.JapaneseAlphabetBest;
@@ -312,25 +417,19 @@ public partial class MainWindow : Window
 
     public static Bitmap CaptureWindow()
     {
-        IntPtr notepadHandle = FindWindow(); // Make sure this function is correctly defined to find your window
-        if (notepadHandle == IntPtr.Zero)
+        IntPtr notepadHandle = FindWindow(); if (notepadHandle == IntPtr.Zero)
             throw new InvalidOperationException("Game window not found.");
 
-        // Get the coordinates of the window's client area
         NativeMethods.GetClientRect(notepadHandle, out var rect);
 
-        // Convert client coordinates to screen coordinates
         NativeMethods.POINT topLeft = new NativeMethods.POINT(rect.Left, rect.Top);
         NativeMethods.ClientToScreen(notepadHandle, ref topLeft);
 
-        // Calculate width and height
         int width = rect.Right - rect.Left;
         int height = rect.Bottom - rect.Top;
 
-        // Create the bitmap with the correct dimensions
         Bitmap bmp = new Bitmap(width, height);
 
-        // Use Graphics to get the image
         using (Graphics g = Graphics.FromImage(bmp))
         {
             g.CopyFromScreen(topLeft.X, topLeft.Y, 0, 0, new System.Drawing.Size(width, height));

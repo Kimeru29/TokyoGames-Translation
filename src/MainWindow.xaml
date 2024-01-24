@@ -8,7 +8,7 @@
         Title="Transparent Window"        
         WindowStyle="None" AllowsTransparency="True" Opacity="0.9"
         Topmost="True" Background="White" MouseDown="OnMouseDown"
-        MouseUp="OnMouseUp" MouseMove="OnMouseMove"        
+        MouseUp="OnMouseUp" MouseMove="OnMouseMove"   KeyDown="Window_KeyDown"     
         WindowState="Maximized">
     <Canvas Name="MyCanvas">
         <Rectangle x:Name="selectionRectangle" Stroke="Transparent" StrokeThickness="2"
