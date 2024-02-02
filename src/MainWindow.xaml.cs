@@ -251,13 +251,13 @@ public partial class MainWindow : Window
 
     private async void ScreenshotTimer_Tick(object sender, EventArgs e)
     {
-        if(actionButtonPressCount == actionButtonReleaseCount) 
-            return;
+        //if(actionButtonPressCount == actionButtonReleaseCount) 
+        //    return;
 
-        actionButtonReleaseCount++;
+        //actionButtonReleaseCount++;
 
-        var bitmapImage = CaptureScreenArea("");
-        var text = await PerformOcrTess(@"C:\test\image.png", bitmapImage);
+        //var bitmapImage = CaptureScreenArea("");
+        var text = await PerformOcrTess(@"C:\test\1.png", new (@"C:\test\1.png"));
 
         int levenshteinDistance = ComputeLevenshteinDistance(text, lastText);
         double similarity = 1.0 - (double)levenshteinDistance / Math.Max(text.Length, lastText.Length);
@@ -340,7 +340,7 @@ public partial class MainWindow : Window
 
         using (var engine = new TesseractEngine(tessdataPath, language, EngineMode.LstmOnly))
         {
-            using (var pix = Pix.LoadTiffFromMemory(imageData))
+            using (var pix = Pix.LoadFromFile(@"C:\test\1.png"))
             {
                 using (var page = engine.Process(pix))
                 {
@@ -362,6 +362,7 @@ public partial class MainWindow : Window
 
     public async Task<string> TranslateJapaneseToEnglish(string japaneseText)
     {
+        return japaneseText;
         if (string.IsNullOrEmpty(japaneseText)) return "";
         var apiKey = "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"; // Your API key
         string prompt = $"You're a professional Japanese-to-English game translator. Translate and adapt for American audiences the following japanese text (this text can be minimal, don't worry about that no need to warm me), provide an accurate translation but also a translation that makes sense in english but retains the original idea DON'T explain your translation: \n'{japaneseText}'";
@@ -379,6 +380,10 @@ public partial class MainWindow : Window
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
         HttpResponseMessage response = await client.PostAsync("https://api.openai.com/v1/chat/completions", content);
+        //if (!response.EnsureSuccessStatusCode().IsSuccessStatusCode)
+        //{
+        //    return japaneseText;
+        //}
         response.EnsureSuccessStatusCode();
         string responseBody = await response.Content.ReadAsStringAsync();
 
